@@ -17,41 +17,49 @@ variables:
   CONTAINERAPPS_ENVIRONMENT: aca-environment
   RESOURCE_GROUP: rg-containerapps-azure-pipelines
   TAG: '$(Build.BuildId)'
-  system.debug: true
-  DOCKER_USERNAME: $(dockerUsername)
-  DOCKER_PASSWORD: $(dockerPassword)
-  dockerRegistryServiceConnection: '6e118ffb-d3c9-44bf-8bbc-ed8510f64d2f'
 
-steps:
-- task: UseDotNet@2
-  inputs:
-    packageType: 'sdk'
-    version: '6.x'
-    installationPath: $(Agent.ToolsDirectory)/dotnet
+stages:
+- stage: Build
+  displayName: Build and push image
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
 
-- script: dotnet build
-  displayName: 'Build Project'
+    - task: Docker@2
+      displayName: Build an image
+      inputs:
+        command: build
+        dockerfile: '$(Build.SourcesDirectory)/backend_api/backend_api_csharp/Dockerfile'
+        repository: $(IMAGE_NAME)
+        tags: $(TAG)
 
-- task: Docker@2
-  inputs:
-    command: 'build'
-    dockerfile: '**/Dockerfile'
-    tags: |
-      $(Build.BuildId)
-    containerRegistry: '$(dockerRegistryServiceConnection)'
-    repository: 'houssemdocker/album-backend-api'
+    - task: Docker@2
+      displayName: Push image to Docker Hub
+      inputs:
+        containerRegistry: 'dockerhub-connection'
+        repository: $(IMAGE_NAME)
+        command: 'push'
+        tags: $(TAG)
 
-- script: docker login -u $(DOCKER_USERNAME) -p $(DOCKER_PASSWORD)
-  displayName: 'Docker Login'
+- stage: Deploy
+  displayName: Deploy to Container Apps
+  jobs:
+  - job: Deploy
+    displayName: Deploy
+    pool:
+      vmImage: ubuntu-latest
+    steps:
 
-- script: cat /home/vsts/work/_temp/DockerConfig_1723927431423/config.json
-  displayName: 'Inspect Docker Config'
-
-- task: Docker@2
-  inputs:
-    command: 'push'
-    containerRegistry: '$(dockerRegistryServiceConnection)'
-    repository: 'houssemdocker/album-backend-api'
-    tags: |
-      $(Build.BuildId)
-
+    - task: AzureContainerApps@1
+      displayName: Deploy new container version
+      inputs:
+        azureSubscription: 'azure-connection'
+        imageToDeploy: '$(IMAGE_NAME):$(TAG)'
+        containerAppName: '$(CONTAINERAPPS_APP)'
+        resourceGroup: '$(RESOURCE_GROUP)'
+        containerAppEnvironment: '$(CONTAINERAPPS_ENVIRONMENT)'
+        targetPort: '3500'
+        ingress: 'external'

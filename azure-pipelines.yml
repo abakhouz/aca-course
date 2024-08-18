@@ -17,6 +17,7 @@ variables:
   CONTAINERAPPS_ENVIRONMENT: aca-environment
   RESOURCE_GROUP: rg-containerapps-azure-pipelines
   TAG: '$(Build.BuildId)'
+  system.debug: true
 
 stages:
 - stage: Build
